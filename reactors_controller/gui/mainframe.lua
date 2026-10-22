@@ -1,163 +1,58 @@
-local basalt = require("gui.basalt")
-local refreshRate = 0.2
+-- GUI Main Frame Module
+-- Handles the user interface for reactor monitoring and control
 
-local function getControllerStatusColor()
-    local switch = {
-        [true] = colors.green,
-        [false] = colors.red
-    }
-    return switch[Controller.IsRunning]
-end
-local function getControllerStatus()
-    local switch = {
-        [true] = "On",
-        [false] = "Off"
-    }
-    return switch[Controller.IsRunning]
+local MainFrame = {}
+MainFrame.__index = MainFrame
+
+function MainFrame.new(controller)
+    local self = setmetatable({}, MainFrame)
+    self.controller = controller
+    self.width = 80
+    self.height = 25
+    self.selected_reactor = 1
+    return self
 end
 
-local monitor = peripheral.find("monitor")
-if monitor == nil then return end
-local main = basalt.addMonitor():setMonitor(monitor):setBackground(colors.black)
-
---#region Main
-local flexbox_main =
-main:addFlexbox()
-    :setWidth("parent.w")
-    :setHeight("parent.h")
-    :setDirection("row")
-    :setSpacing(0)
-    :setBackground(main.getBackground())
-
-local flexbox_main_left =
-flexbox_main:addFlexbox()
-            :setHeight("parent.h")
-            :setWidth("parent.w / 2")
-            :setDirection("row")
-            :setBackground(main.getBackground())
-
-local flexbox_main_right = 
-flexbox_main:addFlexbox()
-            :setHeight("parent.h")
-            :setWidth("parent.w / 2")
-            :setDirection("column")
-            :setJustifyContent("center")
-            :setBackground(main.getBackground())
---#region
-
-
---#region Graphs
-
-local flexbox_graphs =
-flexbox_main_left:addFlexbox()
-    :setWidth("parent.w")
-    :setHeight("parent.h")
-    :setBorder(colors.red)
-    :setBackground(main.getBackground())
-    :setDirection("row")
-    :setJustifyContent("center")
-
-flexbox_graphs:addLabel()
-                    :setText(" Graphs ")
-                    :setHeight(1)
-                    :setForeground(colors.white)
-                    :setBackground(main.getBackground())
-                    flexbox_graphs:addBreak()
-
-local flexbox_graphs_sub =
-flexbox_graphs:addFlexbox()
-                    :setWidth("parent.w - 2")
-                    :setHeight("parent.h - 3")
-                    :setDirection("row")
-                    :setJustifyContent("center")
-                    :setBackground(main.getBackground())
-
-local EnergyColumn =
-flexbox_graphs_sub:addProgressbar()
-                    :setDirection(3)
-                    :setWidth(6)
-                    :setHeight("parent.h")
-                    :setProgressBar(colors.green)
-                    :setBackground(colors.red)
-
-local RodLevelColumn = 
-flexbox_graphs_sub:addProgressbar()
-                    :setDirection(1)
-                    :setWidth(6)
-                    :setHeight("parent.h")
-                    :setProgressBar(colors.orange)
-                    :setBackground(colors.red)
-
---#endregion
---#region Controls
-
-local flexbox_controls =
-flexbox_main_right:addFlexbox()
-    :setBorder(colors.lightBlue)
-    :setBackground(main:getBackground())
-    :setDirection("row")
-    :setJustifyContent("center")
-            
-flexbox_controls:addLabel()
-                :setText(" Controls ")
-                :setHeight(1)
-                :setForeground(colors.white)
-                :setBackground(main.getBackground())
-                flexbox_controls:addBreak()
-
-local ToggleButton =
-flexbox_controls:addButton()
-                :setText("Controller Status: ")
-                :setWidth("parent.w / 1.2")
-                :setHeight(1)
-                :onClick(function ()
-                    Controller:SetAllActive(not Controller.IsRunning)
-                end)
-                flexbox_controls:addBreak()
-
---#endregion
---#region Statistics
-
-local flexbox_statistics =
-flexbox_main_right:addFlexbox()
-    :setBorder(colors.lime)
-    :setBackground(main.getBackground())
-    :setDirection("row")
-    :setJustifyContent("center")
-
-flexbox_statistics:addLabel()
-                    :setText(" Statistics ")
-                    :setHeight(1)
-                    :setForeground(colors.white)
-                    :setBackground(main.getBackground())
-                    flexbox_statistics:addBreak()
-
-local Label_FE_Generating =
-flexbox_statistics:addLabel()
-                    :setText("Generating: ")
-                    :setWidth("parent.w / 1.2")
-                    :setForeground(colors.white)
-
---#endregion
-
-
-local RefreshThread = main:addThread()
-RefreshThread:start(function ()
-    while true do
-        ToggleButton:setBackground(getControllerStatusColor())
-        ToggleButton:setText("Controller Status: " ..getControllerStatus())
-
-        EnergyColumn:setProgress(Controller.ApiHelper.getAllEnergyStored() / Controller.ApiHelper.getAllEnergyCapacity() * 100)
-
-        RodLevelColumn:setProgress(Controller.AverageRodLevel)
-
-        os.sleep(refreshRate)
+function MainFrame:render(reactors)
+    -- Clear screen
+    term.clear()
+    term.setCursorPos(1, 1)
+    
+    -- Header
+    print("═══════════════════════════════════════")
+    print("   BIGGER REACTORS CONTROLLER V2")
+    print("═══════════════════════════════════════")
+    print("")
+    
+    -- Reactor list
+    for i, reactor in ipairs(reactors) do
+        local prefix = (i == self.selected_reactor) and "> " or "  "
+        local status = reactor.status and "ONLINE" or "OFFLINE"
+        local energy = reactor.status and reactor.status.energy_stored or 0
+        local capacity = reactor.status and reactor.status.energy_capacity or 0
+        local pct = capacity > 0 and math.floor((energy / capacity) * 100) or 0
+        
+        print(string.format("%s[%d] %s - %s - %d%% (%d/%d RF)",
+            prefix, i, reactor.name or "Unknown", status, pct, energy, capacity))
     end
-end)
+    
+    print("")
+    print("Controls: [↑/↓] Select  [SPACE] Toggle  [Q] Quit")
+end
 
+function MainFrame:handle_input(key)
+    if key == "up" and self.selected_reactor > 1 then
+        self.selected_reactor = self.selected_reactor - 1
+    elseif key == "down" and self.selected_reactor < #self.controller.reactors then
+        self.selected_reactor = self.selected_reactor + 1
+    elseif key == "space" then
+        local reactor = self.controller.reactors[self.selected_reactor]
+        if reactor then
+            self.controller:toggle_reactor(self.selected_reactor)
+        end
+    elseif key == "q" then
+        self.controller:stop()
+    end
+end
 
-main:addThread():start(function ()
-    Controller:AutoUpdate()
-end)
-
-return basalt
+return MainFrame

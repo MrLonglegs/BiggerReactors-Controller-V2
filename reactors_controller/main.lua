@@ -1,10 +1,21 @@
-Controller = require("core.controller").new()
+-- BiggerReactors Controller Main Entry Point
+-- This is the main entry point for the controller
 
---Create the main frame which shall be portrayed on an Monitor
---If no valid Monitor is connected, the script will run headless.
-local gui = require("gui.mainframe")
-if (gui ~= nil) then
-    gui.autoUpdate()
-else
-    Controller:AutoUpdate()
+local controller = require("reactors_controller.core.controller")
+local gui = require("reactors_controller.gui.mainframe")
+
+-- Initialize the controller
+local function main()
+    print("Starting BiggerReactors Controller V2...")
+    
+    -- Initialize controller core
+    local ctrl = controller.new()
+    
+    -- Initialize GUI
+    local frame = gui.new(ctrl)
+    
+    -- Start main loop
+    ctrl:run(frame)
 end
+
+main()

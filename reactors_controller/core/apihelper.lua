@@ -142,12 +142,9 @@ end
 function ApiHelper.getAllEnergyCapacity()
     local totalCapacity = 0
     for _, reactor in pairs(ApiHelper.getReactors()) do
-        local stored = ApiHelper.getEnergyStored(reactor)
-        if stored == nil or reactor.storedThisTick == nil or stored < reactor.capacity then
-            local capacity = ApiHelper.getEnergyCapacity(reactor)
-            if capacity then
-                totalCapacity = totalCapacity + capacity
-            end
+        local capacity = ApiHelper.getEnergyCapacity(reactor)
+        if capacity then
+            totalCapacity = totalCapacity + capacity
         end
     end
     for _, turbine in pairs(ApiHelper.getTurbines()) do
@@ -222,7 +219,6 @@ end
 function ApiHelper.getRodLevels(reactor)
     if reactor == nil then return nil end
 
-    local method = getMethod(reactor, reactor.Class, "getControlRodsLevels")
     return safeCall(function() return reactor.getControlRodsLevels() end)
 end
 

@@ -1,7 +1,7 @@
 -- BiggerReactors-Controller-V2 Core Controller
 -- Main control logic for reactor and turbine management
 
-local Controller = { ApiHelper = require("reactors_controller.core.apihelper") }
+local Controller = { ApiHelper = require("core.apihelper") }
 
 Controller.IsRunning = false -- Variable to determine whether the control program should run
 Controller.AverageRodLevel = 0

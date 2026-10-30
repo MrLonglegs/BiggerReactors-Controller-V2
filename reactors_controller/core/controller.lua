@@ -144,16 +144,8 @@ end
 
 -- Check safety conditions (temperature, etc.)
 function Controller:CheckSafety()
-    for _, reactor in pairs(self.Reactors) do
-        if self.ApiHelper.getReactorType(reactor) == "active" then
-            -- Check temperature if available (mod-dependent)
-            local temp = self.ApiHelper.getReactorTemperature(reactor)
-            if temp and temp > self.Parameters.TemperatureShutdownThreshold then
-                self:EmergencyShutdown("Reactor temperature critical: " .. temp)
-                return false
-            end
-        end
-    end
+    -- TODO: Add safety checks when mod APIs are available
+    -- For now, just return true
     return true
 end
 

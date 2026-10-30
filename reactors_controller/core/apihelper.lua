@@ -1,23 +1,69 @@
+-- BiggerReactors-Controller-V2 API Helper
+-- Abstraction layer for BigReactors and BiggerReactors peripheral APIs
+
 local ApiHelper = {}
 
--- GETTERS
+-- Peripheral type definitions
+local PERIPHERAL_TYPES = {
+    REACTOR = {
+        BIG_REACTORS = "BigReactors-Reactor",
+        BIGGER_REACTORS = "BiggerReactors_Reactor",
+    },
+    TURBINE = {
+        BIG_REACTORS = "BigReactors-Turbine",
+        BIGGER_REACTORS = "BiggerReactors_Turbine",
+    },
+}
 
--- General
+-- Utility: Get method for a peripheral based on its class
+local function getMethod(peripheral, class, method)
+    local switch = {
+        [PERIPHERAL_TYPES.REACTOR.BIG_REACTORS] = function()
+            return peripheral[method]
+        end,
+        [PERIPHERAL_TYPES.REACTOR.BIGGER_REACTORS] = function()
+            return peripheral[method]
+        end,
+        [PERIPHERAL_TYPES.TURBINE.BIG_REACTORS] = function()
+            return peripheral[method]
+        end,
+        [PERIPHERAL_TYPES.TURBINE.BIGGER_REACTORS] = function()
+            return peripheral[method]
+        end,
+    }
+    local handler = switch[class]
+    if handler then
+        return handler()
+    end
+    return nil
+end
+
+-- Utility: Safely call a method with error handling
+local function safeCall(func, ...)
+    local success, result = pcall(func, ...)
+    if not success then
+        return nil, result
+    end
+    return result
+end
+
+-- === REACTOR DISCOVERY ===
+
 function ApiHelper.getReactors()
-    local big_reactors = { peripheral.find("BigReactors-Reactor") }
-    local bigger_reactors = { peripheral.find("BiggerReactors_Reactor") }
-
     local all_reactors = {}
 
-    if (big_reactors ~= nil) then
+    local big_reactors = { peripheral.find("BigReactors-Reactor") }
+    if big_reactors then
         for _, big_reactor in pairs(big_reactors) do
-            big_reactor.Class = "BigReactors-Reactor"
+            big_reactor.Class = PERIPHERAL_TYPES.REACTOR.BIG_REACTORS
             table.insert(all_reactors, big_reactor)
         end
-    end  
-    if (bigger_reactors ~= nil) then
+    end
+
+    local bigger_reactors = { peripheral.find("BiggerReactors_Reactor") }
+    if bigger_reactors then
         for _, bigger_reactor in pairs(bigger_reactors) do
-            bigger_reactor.Class = "BiggerReactors_Reactor"
+            bigger_reactor.Class = PERIPHERAL_TYPES.REACTOR.BIGGER_REACTORS
             table.insert(all_reactors, bigger_reactor)
         end
     end
@@ -26,20 +72,20 @@ function ApiHelper.getReactors()
 end
 
 function ApiHelper.getTurbines()
-    local big_turbines = { peripheral.find("BigReactors-Turbine") }
-    local bigger_turbines = { peripheral.find("BiggerReactors_Turbine") }
-
     local all_turbines = {}
 
-    if (big_turbines ~= nil) then
+    local big_turbines = { peripheral.find("BigReactors-Turbine") }
+    if big_turbines then
         for _, big_turbine in pairs(big_turbines) do
-            big_turbine.Class = "BigReactors-Turbine"
+            big_turbine.Class = PERIPHERAL_TYPES.TURBINE.BIG_REACTORS
             table.insert(all_turbines, big_turbine)
         end
     end
-    if (bigger_turbines ~= nil) then
+
+    local bigger_turbines = { peripheral.find("BiggerReactors_Turbine") }
+    if bigger_turbines then
         for _, bigger_turbine in pairs(bigger_turbines) do
-            bigger_turbine.Class = "BiggerReactors_Turbine"
+            bigger_turbine.Class = PERIPHERAL_TYPES.TURBINE.BIGGER_REACTORS
             table.insert(all_turbines, bigger_turbine)
         end
     end
@@ -47,260 +93,255 @@ function ApiHelper.getTurbines()
     return all_turbines
 end
 
+-- === ENERGY HELPERS ===
+
 function ApiHelper.getEnergyCapacity(o)
-    if (o ~= nil) then
-        local switch = {
-            ["BiggerReactors_Reactor"] = function ()
-                return o.battery().capacity()
-            end,
-            ["BiggerReactors_Turbine"] = function ()
-                return o.battery().capacity()
-            end,
-            ["BigReactors-Reactor"] = function ()
-                return o.getEnergyCapacity()
-            end,
-            ["BigReactors-Turbine"] = function ()
-                return o.getEnergyCapacity()
-            end
+    if o == nil then return nil end
+
+    local methods = {
+        batteryCapacity = {
+            [PERIPHERAL_TYPES.REACTOR.BIG_REACTORS] = function() return o.getEnergyCapacity end,
+            [PERIPHERAL_TYPES.REACTOR.BIGGER_REACTORS] = function() return function() return o.battery().capacity() end end,
+            [PERIPHERAL_TYPES.TURBINE.BIG_REACTORS] = function() return o.getEnergyCapacity end,
+            [PERIPHERAL_TYPES.TURBINE.BIGGER_REACTORS] = function() return function() return o.battery().capacity() end end,
         }
-        return switch[o.Class]()
+    }
+
+    local methodGetter = methods.batteryCapacity[o.Class]
+    if methodGetter then
+        local method = methodGetter()
+        if method then
+            return safeCall(method)
+        end
     end
+    return nil
+end
+
+function ApiHelper.getEnergyStored(o)
+    if o == nil then return nil end
+
+    local methods = {
+        batteryStored = {
+            [PERIPHERAL_TYPES.REACTOR.BIG_REACTORS] = function() return o.getEnergyStored end,
+            [PERIPHERAL_TYPES.REACTOR.BIGGER_REACTORS] = function() return function() return o.battery().stored() end end,
+            [PERIPHERAL_TYPES.TURBINE.BIG_REACTORS] = function() return o.getEnergyStored end,
+            [PERIPHERAL_TYPES.TURBINE.BIGGER_REACTORS] = function() return function() return o.battery().stored() end end,
+        }
+    }
+
+    local methodGetter = methods.batteryStored[o.Class]
+    if methodGetter then
+        local method = methodGetter()
+        if method then
+            return safeCall(method)
+        end
+    end
+    return nil
 end
 
 function ApiHelper.getAllEnergyCapacity()
     local totalCapacity = 0
-    for _, reactor in ipairs(ApiHelper.getReactors()) do
-        if (reactor.reactorType == "passive") then
-            totalCapacity = totalCapacity + ApiHelper.getEnergyCapacity(reactor)
+    for _, reactor in pairs(ApiHelper.getReactors()) do
+        local stored = ApiHelper.getEnergyStored(reactor)
+        if stored == nil or reactor.storedThisTick == nil or stored < reactor.capacity then
+            local capacity = ApiHelper.getEnergyCapacity(reactor)
+            if capacity then
+                totalCapacity = totalCapacity + capacity
+            end
         end
     end
-    for _, turbine in ipairs(ApiHelper.getTurbines()) do
-        totalCapacity = totalCapacity + ApiHelper.getEnergyCapacity(turbine)
+    for _, turbine in pairs(ApiHelper.getTurbines()) do
+        local capacity = ApiHelper.getEnergyCapacity(turbine)
+        if capacity then
+            totalCapacity = totalCapacity + capacity
+        end
     end
     return totalCapacity
-end
-
-function ApiHelper.getEnergyStored(o)
-    if (o ~= nil) then
-        local switch = {
-            ["BiggerReactors_Reactor"] = function ()
-                return o.battery().stored()
-            end,
-            ["BiggerReactors_Turbine"] = function ()
-                return o.battery().stored()
-            end,
-            ["BigReactors-Reactor"] = function ()
-                return o.getEnergyStored()
-            end,
-            ["BigReactors-Turbine"] = function ()
-                return o.getEnergyStored()
-            end
-        }
-        return switch[o.Class]()
-    end
 end
 
 function ApiHelper.getAllEnergyStored()
     local totalEnergy = 0
     for _, reactor in pairs(ApiHelper.getReactors()) do
-        if (reactor.reactorType == "passive") then
-            totalEnergy = totalEnergy + ApiHelper.getEnergyStored(reactor)
+        local energy = ApiHelper.getEnergyStored(reactor)
+        if energy then
+            totalEnergy = totalEnergy + energy
         end
     end
     for _, turbine in pairs(ApiHelper.getTurbines()) do
-        totalEnergy = totalEnergy + ApiHelper.getEnergyStored(turbine)
+        local energy = ApiHelper.getEnergyStored(turbine)
+        if energy then
+            totalEnergy = totalEnergy + energy
+        end
     end
     return totalEnergy
 end
 
--- Reactor Specific
+-- === REACTOR HELPERS ===
+
 function ApiHelper.getReactorType(reactor)
-    if(reactor ~= nil) then
-        local switch = {
-            ["BiggerReactors_Reactor"] = function ()
-                if (reactor.coolantTank()) then
-                    return "active"
-                elseif (reactor.battery()) then
-                    return "passive"
-                end
-            end,
-            ["BigReactors-Reactor"] = function ()
-                if (reactor.isActivelyCooled()) then
-                    return "active"
-                elseif not (reactor.isActivelyCooled()) then
-                    return "passive"
-                end
-            end
-        }
-        return switch[reactor.Class]()
+    if reactor == nil then return nil end
+
+    if reactor.Class == PERIPHERAL_TYPES.REACTOR.BIGGER_REACTORS then
+        if reactor.coolantTank() then
+            return "active"
+        elseif reactor.battery() then
+            return "passive"
+        end
+    elseif reactor.Class == PERIPHERAL_TYPES.REACTOR.BIG_REACTORS then
+        local isActivelyCooled = safeCall(function() return reactor.isActivelyCooled() end)
+        if isActivelyCooled then
+            return "active"
+        else
+            return "passive"
+        end
     end
+    return nil
 end
 
 function ApiHelper.getProducedLastTick(reactor)
-    if(reactor ~= nil) then
-        local switch = {
-            ["BiggerReactors_Reactor"] = function ()
-                if (ApiHelper.getReactorType(reactor) == "passive") then
-                    return reactor.battery().producedLastTick()
-                elseif (ApiHelper.getReactorType(reactor) == "active") then
-                    return reactor.coolantTank().transitionedLastTick()
-                end
-            end,
-            ["BigReactors-Reactor"] = function ()
-                if (ApiHelper.getReactorType(reactor) == "passive") then
-                    return reactor.getEnergyProducedLastTick()
-                elseif (ApiHelper.getReactorType(reactor) == "active") then
-                    return reactor.getHotFluidProducedLastTick()
-                end
-            end
-        }
-        return switch[reactor.Class]()
+    if reactor == nil then return nil end
+
+    local reactorType = ApiHelper.getReactorType(reactor)
+
+    if reactor.Class == PERIPHERAL_TYPES.REACTOR.BIGGER_REACTORS then
+        if reactorType == "passive" then
+            return safeCall(function() return reactor.battery().producedLastTick() end)
+        elseif reactorType == "active" then
+            return safeCall(function() return reactor.coolantTank().transitionedLastTick() end)
+        end
+    elseif reactor.Class == PERIPHERAL_TYPES.REACTOR.BIG_REACTORS then
+        if reactorType == "passive" then
+            return safeCall(function() return reactor.getEnergyProducedLastTick() end)
+        elseif reactorType == "active" then
+            return safeCall(function() return reactor.getHotFluidProducedLastTick() end)
+        end
     end
+    return nil
 end
 
 function ApiHelper.getRodLevels(reactor)
-    if(reactor ~= nil) then
-        local switch = {
-            ["BiggerReactors_Reactor"] = function ()
-                return reactor.getControlRodsLevels()
-            end,
-            ["BigReactors-Reactor"] = function ()
-                return reactor.getControlRodsLevels()
-            end
-        }
-        return switch[reactor.Class]()
+    if reactor == nil then return nil end
+
+    local method = getMethod(reactor, reactor.Class, "getControlRodsLevels")
+    return safeCall(function() return reactor.getControlRodsLevels() end)
+end
+
+function ApiHelper.setControlRods(reactor, level)
+    if reactor == nil or level == nil or type(level) ~= "number" then return end
+
+    level = math.max(0, math.min(100, level))
+
+    if reactor.Class == PERIPHERAL_TYPES.REACTOR.BIGGER_REACTORS or 
+       reactor.Class == PERIPHERAL_TYPES.REACTOR.BIG_REACTORS then
+        safeCall(function() reactor.setAllControlRodLevels(level) end)
     end
 end
 
 function ApiHelper.getHotFluidCapacity(reactor)
-    if (reactor ~= nil and ApiHelper.getReactorType(reactor) == "active") then
-        local switch = {
-            ["BiggerReactors_Reactor"] = function ()
-                if (reactor.coolantTank()) then
-                    return reactor.coolantTank().capacity()
-                end
-            end,
-            ["BigReactors-Reactor"] = function ()
-                return reactor.getHotFluidAmountMax()
-            end
-        }
-        return switch[reactor.Class]()
+    if reactor == nil or ApiHelper.getReactorType(reactor) ~= "active" then return nil end
+
+    if reactor.Class == PERIPHERAL_TYPES.REACTOR.BIGGER_REACTORS then
+        local tank = safeCall(function() return reactor.coolantTank() end)
+        if tank then
+            return safeCall(function() return tank.capacity() end)
+        end
+    elseif reactor.Class == PERIPHERAL_TYPES.REACTOR.BIG_REACTORS then
+        return safeCall(function() return reactor.getHotFluidAmountMax() end)
     end
+    return nil
 end
 
 function ApiHelper.getHotFluidStored(reactor)
-    if (reactor ~= nil) then
-        local switch = {
-            ["BiggerReactors_Reactor"] = function ()
-                if (reactor.coolantTank()) then
-                    return reactor.coolantTank().hotFluidAmount()
-                end
-            end,
-            ["BigReactors-Reactor"] = function ()
-                return reactor.getHotFluidAmount()
-            end
-        }
-        return switch[reactor.Class]()
+    if reactor == nil then return nil end
+
+    if reactor.Class == PERIPHERAL_TYPES.REACTOR.BIGGER_REACTORS then
+        local tank = safeCall(function() return reactor.coolantTank() end)
+        if tank then
+            return safeCall(function() return tank.hotFluidAmount() end)
+        end
+    elseif reactor.Class == PERIPHERAL_TYPES.REACTOR.BIG_REACTORS then
+        return safeCall(function() return reactor.getHotFluidAmount() end)
     end
+    return nil
 end
 
--- Turbine Specific
-function ApiHelper.getRotorSpeed(turbine)
-    if(turbine ~= nil) then
-        local switch = {
-            ["BiggerReactors_Turbine"] = function ()
-                return turbine.rotor().RPM()
-            end,
-            ["BigReactors-Turbine"] = function ()
-                return turbine.getRotorSpeed()
-            end
-        }
-        return switch[turbine.Class]()
+function ApiHelper.getReactorTemperature(reactor)
+    if reactor == nil then return nil end
+
+    -- Try to get temperature from BiggerReactors active reactor
+    if reactor.Class == PERIPHERAL_TYPES.REACTOR.BIGGER_REACTORS then
+        if reactor.coolantTank() then
+            return safeCall(function() return reactor.coolantTank().temperature() end)
+        end
     end
+
+    -- Temperature monitoring not available for BigReactors (older mod)
+    return nil
+end
+
+-- === TURBINE HELPERS ===
+
+function ApiHelper.getRotorSpeed(turbine)
+    if turbine == nil then return nil end
+
+    if turbine.Class == PERIPHERAL_TYPES.TURBINE.BIGGER_REACTORS then
+        local rotor = safeCall(function() return turbine.rotor() end)
+        if rotor then
+            return safeCall(function() return rotor.RPM() end)
+        end
+    elseif turbine.Class == PERIPHERAL_TYPES.TURBINE.BIG_REACTORS then
+        return safeCall(function() return turbine.getRotorSpeed() end)
+    end
+    return nil
 end
 
 function ApiHelper.getFluidFlowRate(turbine)
-    if(turbine ~= nil) then
-        local switch = {
-            ["BiggerReactors_Turbine"] = function ()
-                return turbine.fluidTank().nominalFlowRate()
-            end,
-            ["BigReactors-Turbine"] = function ()
-                return turbine.getFluidFlowRate()
-            end
-        }
-        return switch[turbine.Class]()
+    if turbine == nil then return nil end
+
+    if turbine.Class == PERIPHERAL_TYPES.TURBINE.BIGGER_REACTORS then
+        local fluidTank = safeCall(function() return turbine.fluidTank() end)
+        if fluidTank then
+            return safeCall(function() return fluidTank.nominalFlowRate() end)
+        end
+    elseif turbine.Class == PERIPHERAL_TYPES.TURBINE.BIG_REACTORS then
+        return safeCall(function() return turbine.getFluidFlowRate() end)
     end
+    return nil
 end
 
--- SETTERS
+-- === SETTERS ===
 
 function ApiHelper.setActive(o, value)
-    if (value ~= nil and type(value) == "boolean") then
-        local switch = {
-            ["BiggerReactors_Reactor"] = function ()
-                o.setActive(value)
-            end,
-            ["BiggerReactors_Turbine"] = function ()
-                o.setActive(value)
-            end,
-            ["BigReactors-Reactor"] = function ()
-                o.setActive(value)
-            end,
-            ["BigReactors-Turbine"] = function ()
-                o.setActive(value)
-            end
-        }
-        switch[o.Class]()
+    if value == nil or type(value) ~= "boolean" then return end
+
+    if o.Class == PERIPHERAL_TYPES.REACTOR.BIGGER_REACTORS or 
+       o.Class == PERIPHERAL_TYPES.REACTOR.BIG_REACTORS or
+       o.Class == PERIPHERAL_TYPES.TURBINE.BIGGER_REACTORS or
+       o.Class == PERIPHERAL_TYPES.TURBINE.BIG_REACTORS then
+        safeCall(function() o.setActive(value) end)
     end
 end
-
--- Reactor Specific
-
-function ApiHelper.setControlRods(reactor, level)
-    if (level ~= nil and type(level) =="number") then
-        level = math.max(level, 0)
-        level = math.min(level, 100)
-
-        local switch = {
-            ["BiggerReactors_Reactor"] = function ()
-                reactor.setAllControlRodLevels(level)
-            end,
-            ["BigReactors-Reactor"] = function ()
-                reactor.setAllControlRodLevels(level)
-            end
-        }
-        switch[reactor.Class]()
-    end
-end
-
--- Turbine Specific
 
 function ApiHelper.setFluidFlowRate(turbine, value)
-    if(turbine ~= nil and type(value) == "number") then
-        local switch = {
-            ["BiggerReactors_Turbine"] = function ()
-                turbine.fluidTank().setNominalFlowRate(value)
-            end,
-            ["BigReactors-Turbine"] = function ()
-                turbine.setFluidFlowRateMax(value)
-            end
-        }
-        switch[turbine.Class]()
+    if turbine == nil or value == nil or type(value) ~= "number" then return end
+
+    if turbine.Class == PERIPHERAL_TYPES.TURBINE.BIGGER_REACTORS then
+        local fluidTank = safeCall(function() return turbine.fluidTank() end)
+        if fluidTank then
+            safeCall(function() fluidTank.setNominalFlowRate(value) end)
+        end
+    elseif turbine.Class == PERIPHERAL_TYPES.TURBINE.BIG_REACTORS then
+        safeCall(function() turbine.setFluidFlowRateMax(value) end)
     end
 end
 
 function ApiHelper.setCoilEngaged(turbine, value)
-    if(turbine ~= nil and type(value) == "boolean") then
-        local switch = {
-            ["BiggerReactors_Turbine"] = function ()
-                turbine.setCoilEngaged(value)
-            end,
-            ["BigReactors-Turbine"] = function ()
-                turbine.setInductorEngaged(value)
-            end
-        }
-        switch[turbine.Class]()
+    if turbine == nil or value == nil or type(value) ~= "boolean" then return end
+
+    if turbine.Class == PERIPHERAL_TYPES.TURBINE.BIGGER_REACTORS then
+        safeCall(function() turbine.setCoilEngaged(value) end)
+    elseif turbine.Class == PERIPHERAL_TYPES.TURBINE.BIG_REACTORS then
+        safeCall(function() turbine.setInductorEngaged(value) end)
     end
 end
 

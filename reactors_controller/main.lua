@@ -2,7 +2,7 @@
 -- Main entry point for the Bigger Reactors Controller
 
 -- Load configuration (falls back to defaults if config.lua is not present)
-local config = require("reactors_controller.config")
+local config = require("config")
 
 -- Default controller parameters
 local defaultParams = {
@@ -35,11 +35,11 @@ if config ~= nil then
 end
 
 -- Initialize the controller
-Controller = require("reactors_controller.core.controller").new(params)
+Controller = require("core.controller").new(params)
 
 --Create the main frame which shall be portrayed on an Monitor
 --If no valid Monitor is connected, the script will run headless.
-local gui = require("reactors_controller.gui.mainframe")
+local gui = require("gui.mainframe")
 if (gui ~= nil) then
     gui.autoUpdate()
 else
